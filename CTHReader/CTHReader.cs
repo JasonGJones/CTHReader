@@ -29,7 +29,7 @@ namespace CTHReader
             _siteUrl = siteUrl;
             calculateOutputFileNames(outputDirectory);
 
-            string outputResult = "Document Saved to " + _outputFileCTH;
+            string outputResult = string.Empty;
             try
             {
                 if (operatingMode == CTHQueryMode.CTHOnly || operatingMode == CTHQueryMode.CTHAndSiteColumns)
@@ -37,12 +37,14 @@ namespace CTHReader
                     XDocument ctDoc = RemoveUnwantedAttributes(ReadCTHXML());
                     //Save the output to disk
                     SaveCTHXMLToCsv(ctDoc);
+                    outputResult += "Document Saved to " + _outputFileCTH + Environment.NewLine;
                 }
 
                 if (operatingMode == CTHQueryMode.SiteColumnsOnly || operatingMode == CTHQueryMode.CTHAndSiteColumns)
                 {
                     StringBuilder scDoc = ReadSiteColumns();
                     WriteFile(scDoc.ToString(), _outputFileSiteCols);
+                    outputResult += "Document Saved to " + _outputFileSiteCols + Environment.NewLine;
                 }
 
             }
