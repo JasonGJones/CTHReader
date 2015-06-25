@@ -24,6 +24,8 @@ namespace CTHReader
             CTHAndSiteColumns
         }
 
+
+
         public string ProcessCTH(string siteUrl, string outputDirectory, CTHQueryMode operatingMode)
         {
             _siteUrl = siteUrl;

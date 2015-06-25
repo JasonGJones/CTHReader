@@ -1,4 +1,5 @@
 ﻿using Microsoft.SharePoint.Client;
+using Microsoft.SharePoint.Client.Search.Analytics;
 using System;
 using System.Collections.Generic;
 using System.Configuration;
@@ -38,6 +39,7 @@ namespace CTHReader
 
                     ));
         }
+
 
         //private static void tidyUpXMLDoc()
         //{
