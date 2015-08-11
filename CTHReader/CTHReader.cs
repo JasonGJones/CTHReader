@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -11,9 +12,21 @@ namespace CTHReader
 {
     class CTHReader
     {
+
+
+        public string UserName { get; set; }
+
+        public System.Security.SecureString UserPassword { get; set; }
+        public string OutputFilePrefix { get; set; }
+
+
         private string _siteUrl;
         private string _outputFileCTH;
         private string _outputFileSiteCols;
+        private string _outputFileCTHHierarchy;
+        private string _outputFileCTHOrphanHierarchy;
+
+        private ContentTypeHierarchy _ctHierarchy = new ContentTypeHierarchy();
 
         private const string comma = ",";
 
@@ -25,11 +38,10 @@ namespace CTHReader
         }
 
 
-
         public string ProcessCTH(string siteUrl, string outputDirectory, CTHQueryMode operatingMode)
         {
             _siteUrl = siteUrl;
-            calculateOutputFileNames(outputDirectory);
+            CalculateOutputFileNames(outputDirectory);
 
             string outputResult = string.Empty;
             try
@@ -39,6 +51,9 @@ namespace CTHReader
                     XDocument ctDoc = RemoveUnwantedAttributes(ReadCTHXML());
                     //Save the output to disk
                     SaveCTHXMLToCsv(ctDoc);
+                    WriteFile(_ctHierarchy.GetTabbedHierarchy(), _outputFileCTHHierarchy);
+                    WriteFile(_ctHierarchy.GetOrphanCTList(), _outputFileCTHOrphanHierarchy);
+
                     outputResult += "Document Saved to " + _outputFileCTH + Environment.NewLine;
                 }
 
@@ -64,6 +79,14 @@ namespace CTHReader
             StringBuilder csv = AddSiteColumnHeaderToCSV();
             using (ClientContext clientContext = new ClientContext(_siteUrl))
             {
+                if (UserName !=null)
+                {
+                    CredentialCache cc = new CredentialCache();
+                    NetworkCredential cred = new NetworkCredential(UserName, UserPassword);
+                    cc.Add(new Uri(_siteUrl), "NTLM", cred);
+                    clientContext.Credentials = cc;
+                }
+
                 var siteCols = clientContext.Web.Fields;
                 clientContext.Load(siteCols);
 
@@ -151,12 +174,14 @@ namespace CTHReader
             return scCSV;
         }
 
-        private void calculateOutputFileNames(string outputDirectory)
+        private void CalculateOutputFileNames(string outputDirectory)
         {
             string siteName = _siteUrl.Split('/').Last();
             //assume dir exists
-            _outputFileCTH = Path.Combine(outputDirectory, string.Format("CTH_{0}_{1}.csv", siteName, DateTime.Now.ToString("yyyy-MM-dd")));
-            _outputFileSiteCols = Path.Combine(outputDirectory, string.Format("SiteCols_{0}_{1}.csv", siteName, DateTime.Now.ToString("yyyy-MM-dd")));
+            _outputFileCTH = Path.Combine(outputDirectory, string.Format("{2}_CTH_{0}_{1}.csv", siteName, DateTime.Now.ToString("yyyy-MM-dd"), OutputFilePrefix));
+            _outputFileSiteCols = Path.Combine(outputDirectory, string.Format("{2}_SiteCols_{0}_{1}.csv", siteName, DateTime.Now.ToString("yyyy-MM-dd"), OutputFilePrefix));
+            _outputFileCTHHierarchy = Path.Combine(outputDirectory, string.Format("{2}_CTHHierarchy_{0}_{1}.txt", siteName, DateTime.Now.ToString("yyyy-MM-dd"), OutputFilePrefix));
+            _outputFileCTHOrphanHierarchy = Path.Combine(outputDirectory, string.Format("{2}_CTHOrphans_{0}_{1}.txt", siteName, DateTime.Now.ToString("yyyy-MM-dd"), OutputFilePrefix));
         }
 
         private void SaveCTHXMLToCsv(XDocument ctDoc)
@@ -224,20 +249,45 @@ namespace CTHReader
         {
             using (ClientContext clientContext = new ClientContext(_siteUrl))
             {
-                var cTypes = clientContext.Web.ContentTypes;
+                if (UserName != null)
+                {
+                    CredentialCache cc = new CredentialCache();
+                    NetworkCredential cred = new NetworkCredential(UserName, UserPassword);
+                    cc.Add(new Uri(_siteUrl), "NTLM", cred);
+                    clientContext.Credentials = cc;
+                }
+
+
+                var cTypes = clientContext.Web.AvailableContentTypes;
                 clientContext.Load(cTypes);
 
                 clientContext.ExecuteQuery();
                 XDocument allCTs = new XDocument(new XElement("ContentTypes"));
 
+                int resourceRequestCounter = 0;
+                const int maxResourceBeforeExecute = 50;
+                foreach (ContentType ct in cTypes)
+                {
+                    clientContext.Load(ct.Parent);
+                    resourceRequestCounter++;
+                    if (resourceRequestCounter%maxResourceBeforeExecute == 0)
+                    {
+                        clientContext.ExecuteQuery();
+                    }
+                }
+                //final call for any remaining requests.
+                clientContext.ExecuteQuery();
                 foreach (ContentType ct in cTypes)
                 {
                     XDocument ctDoc = XDocument.Parse(ct.SchemaXml, LoadOptions.None);
+                    ctDoc.Root.Add(new XAttribute("ParentCTName", ct.Parent.Name));
+                    ctDoc.Root.Add(new XAttribute("ParentCTId", ct.Parent.Id.ToString()));
                     allCTs.Root.Add(ctDoc.Root);
                 }
                 return allCTs;
             }
         }
+
         private XDocument RemoveUnwantedAttributes(XDocument xd)
         {
 
@@ -337,18 +387,25 @@ namespace CTHReader
 
                 try
                 {
-                    XAttribute attrChoices = GenerateChoicesAttribute(xe);
-                    XAttribute attrFieldRefs = GenerateFieldRefsAttribute(xe);
+                    string ctParentName = xe.Parent.Parent.Attribute("ParentCTName").Value;
+                    string ctName = xe.Parent.Parent.Attribute("Name").Value;
+                    string ctId = xe.Parent.Parent.Attribute("ID").Value;
+                    _ctHierarchy.AddToHierarchy(ctName, ctParentName, ctId);
+
+
+                    XAttribute attrChoices = GenerateChoicesAttribute(xe); //CHOICES
+                    XAttribute attrFieldRefs = GenerateFieldRefsAttribute(xe); //FieldRefs
                     XAttribute attrDisplayPattern = GenerateFlattenedAttribute(xe, "DisplayPattern");
                     XAttribute attrXmlDocuments = GenerateFlattenedAttribute(xe, "XmlDocuments");
                     XAttribute attrDefault = GenerateFlattenedAttribute(xe, "Default");
                     XAttribute attrMAPPINGS = GenerateFlattenedAttribute(xe, "MAPPINGS");
 
-                    
-
                     XAttribute attrCTID = new XAttribute("CTID", xe.Parent.Parent.Attribute("ID").Value);
-                    XAttribute attrCTName = new XAttribute("CTName", xe.Parent.Parent.Attribute("Name").Value);
+                    XAttribute attrCTName = new XAttribute("CTName", ctName);
                     XAttribute attrCTGroup = new XAttribute("CTGroup", xe.Parent.Parent.Attribute("Group").Value);
+
+                    XAttribute attrParentName = new XAttribute("ParentCTName", ctParentName);
+                    XAttribute attrParentId = new XAttribute("ParentCTId", xe.Parent.Parent.Attribute("ParentCTId").Value);
 
                     xe.Add(new XAttribute(attrChoices));
                     xe.Add(new XAttribute(attrFieldRefs));
@@ -359,6 +416,8 @@ namespace CTHReader
                     xe.Add(new XAttribute(attrCTID));
                     xe.Add(new XAttribute(attrCTName));
                     xe.Add(new XAttribute(attrCTGroup));
+                    xe.Add(new XAttribute(attrParentName));
+                    xe.Add(new XAttribute(attrParentId));
 
                     outputDoc.Root.Add(xe);
                 }
@@ -367,9 +426,56 @@ namespace CTHReader
                     throw new Exception(string.Format("error in RemoveUnwantedAttributes\t{0}\t{1}", ex.Message, ex.InnerException));
                 }
             }
+            ProcessOrphans();
+                        
             return outputDoc;
         }
 
+        private void ProcessOrphans()
+        {
+            int orphanCount = _ctHierarchy.GetOrphanCount();
+            if (orphanCount > 0)
+            { 
+                _ctHierarchy.AssociateOrphansToHierarchy();
+                int revisedOrphanCount = _ctHierarchy.GetOrphanCount();
+
+                if (revisedOrphanCount == orphanCount)
+                {
+                    //attempt to provide a parent to the orphan
+                    List<string> orphanIds = _ctHierarchy.GetOrphansIds();
+                    using (ClientContext clientContext = new ClientContext(_siteUrl))
+                    {
+                        if (UserName != null)
+                        {
+                            CredentialCache cc = new CredentialCache();
+                            NetworkCredential cred = new NetworkCredential(UserName, UserPassword);
+                            cc.Add(new Uri(_siteUrl), "NTLM", cred);
+                            clientContext.Credentials = cc;
+                        }
+
+                        foreach (string orphanId in orphanIds)
+                        {
+                            ContentType ct = clientContext.Web.ContentTypes.GetById(orphanId);
+                            clientContext.Load(ct);
+
+                            ContentType ctParent = ct.Parent;
+                            clientContext.Load(ctParent);
+
+                            //Now, get the parent-parent detail
+                            ContentType ctParentParent = ctParent.Parent;
+                            clientContext.Load(ctParentParent);
+
+                            clientContext.ExecuteQuery();
+
+                            _ctHierarchy.AddToOrphanCT(ctParent.Name, ctParentParent.Name, ctParentParent.Id.ToString());
+                        }
+                    }
+                    //try once more
+                    _ctHierarchy.AssociateOrphansToHierarchy();
+                }
+            }
+        }
+                
         private XAttribute GenerateFlattenedAttribute(XElement xe, string nodeName)
         {
             string displayPattern = String.Empty;
@@ -381,6 +487,7 @@ namespace CTHReader
             XAttribute attrOut = new XAttribute(nodeName, displayPattern);
 
             xe.Descendants(nodeName).Remove();
+            xe.Attributes(nodeName).Remove();
 
             return attrOut;
         }
@@ -391,16 +498,17 @@ namespace CTHReader
             foreach (XElement attrItem in xe.Descendants("FieldRef"))
             {
 
-                fieldRefsList += getSafeAttributeValue(attrItem, "Name") + " " + getSafeAttributeValue(attrItem, "ID") + ";";
+                fieldRefsList += GetSafeAttributeValue(attrItem, "Name") + " " + GetSafeAttributeValue(attrItem, "ID") + ";";
             }
             XAttribute attrOut = new XAttribute("FieldRefs", fieldRefsList);
 
             xe.Descendants("FieldRefs").Remove();
+            xe.Attributes("FieldRefs").Remove();
 
             return attrOut;
         }
 
-        private string getSafeAttributeValue(XElement attrItem, string attributeName)
+        private string GetSafeAttributeValue(XElement attrItem, string attributeName)
         {
             if (attrItem.Attribute(attributeName) != null)
             {
@@ -420,8 +528,12 @@ namespace CTHReader
             XAttribute attrOut = new XAttribute("Choices", choicesList);
             
             xe.Descendants("CHOICES").Remove();
+            xe.Descendants("Choices").Remove();
+            xe.Attributes("Choices").Remove();
 
             return attrOut;
         }
+
+
     }
 }
