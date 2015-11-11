@@ -54,14 +54,14 @@ namespace CTHReader
                     WriteFile(_ctHierarchy.GetTabbedHierarchy(), _outputFileCTHHierarchy);
                     WriteFile(_ctHierarchy.GetOrphanCTList(), _outputFileCTHOrphanHierarchy);
 
-                    outputResult += "Document Saved to " + _outputFileCTH + Environment.NewLine;
+                    outputResult += "Documents Saved to " + _outputFileCTH + Environment.NewLine;
                 }
 
                 if (operatingMode == CTHQueryMode.SiteColumnsOnly || operatingMode == CTHQueryMode.CTHAndSiteColumns)
                 {
                     StringBuilder scDoc = ReadSiteColumns();
                     WriteFile(scDoc.ToString(), _outputFileSiteCols);
-                    outputResult += "Document Saved to " + _outputFileSiteCols + Environment.NewLine;
+                    outputResult += "Documents Saved to " + _outputFileSiteCols + Environment.NewLine;
                 }
 
             }
@@ -190,6 +190,11 @@ namespace CTHReader
             StringBuilder csvLine = new StringBuilder();
             StringBuilder csv = new StringBuilder();
             var headers = ctDoc.Root.Elements().First().Attributes().Select(n => n.Name).ToList();
+
+            //Add the 'needed' attributes in case they are not present in the first node
+            CheckAndUpdateHeaders(ref headers);
+            headers = AdjustHeadersOrder(headers);
+
             foreach(var header in headers)
             {
                 csvLine.Append(header + comma);
@@ -228,6 +233,42 @@ namespace CTHReader
             }
             WriteFile(csv.ToString(), _outputFileCTH);
 
+        }
+
+        private List<XName> AdjustHeadersOrder(List<XName> headers)
+        {
+            List<string> startItems = new List<string>() {"CTGroup", "ParentCTName", "CTName", "DisplayName", "Required", "Hidden"};
+            List<string> tailItems = new List<string>() { "ParentCTId", "CTID" };
+            foreach (string item in startItems)
+            {
+                if (headers.Contains(item)) { headers.Remove(item); }
+            }
+
+            foreach (string item in tailItems)
+            {
+                if (headers.Contains(item)) { headers.Remove(item); }
+            }
+
+            List<XName> newHeaders = new List<XName>();
+            foreach (string item in startItems) {newHeaders.Add(item);}
+            foreach (XName item in headers) { newHeaders.Add(item); }
+            foreach (string item in tailItems) { newHeaders.Add(item); }
+
+            return newHeaders;
+        }
+
+        private void CheckAndUpdateHeaders(ref List<XName> headers)
+        {
+            List<string> valuesToCheck = new List<string>() { "Required", "Hidden", "ReadOnly", "PrimaryPITarget", "PrimaryPIAttribute", "Aggregation", "Node" };
+
+            foreach(string value in valuesToCheck)
+            {
+                if (!headers.Contains(value))
+                {
+                    headers.Add(value);
+                }
+
+            }
         }
         private void WriteFile(string outputString, string fileSaveLocation)
         {
@@ -299,15 +340,15 @@ namespace CTHReader
                                                             "SourceID",
                                                             "UnlimitedLengthInDocumentLibrary",
                                                             "AppendOnly",
-                                                            "Indexed",
+                                                            //"Indexed",
                                                             "IsolateStyles",
                                                             "EnforceUniqueValues",
                                                             "NumLines",
-                                                            "RestrictedMode",
-                                                            "RichText",
-                                                            "RichTextMode",
-                                                            "Sortable",
-                                                            "Sealed",
+                                                            //"RestrictedMode",
+                                                            //"RichText",
+                                                            //"RichTextMode",
+                                                            //"Sortable",
+                                                            //"Sealed",
                                                             "PITarget",
                                                             "Customization",
                                                             "Percentage",
@@ -315,18 +356,18 @@ namespace CTHReader
                                                             "PrimaryPIAttribute",
                                                             "Aggregation",
                                                             "Node",
-                                                            "AllowDeletion",
+                                                            //"AllowDeletion",
                                                             "FromBaseType",
-                                                            "ShowInNewForm",
-                                                            "ShowInEditForm",
+                                                            //"ShowInNewForm",
+                                                            //"ShowInEditForm",
                                                             "List",
-                                                            "ShowField",
-                                                            "Mult",
-                                                            "MaxLength",
+                                                            //"ShowField",
+                                                            //"Mult",
+                                                            //"MaxLength",
                                                             "DisplaceOnUpgrade",
                                                             "UserSelectionMode",
                                                             "UserSelectionScope",
-                                                            "ReadOnlyEnforced",
+                                                            //"ReadOnlyEnforced",
                                                             "Format",
                                                             "DisplayNameSrcField",
                                                             "ClassInfo",
@@ -334,25 +375,25 @@ namespace CTHReader
                                                             "FillInChoice",
                                                             "Min",
                                                             "WebId",
-                                                            "ShowInViewForms",
+                                                            //"ShowInViewForms",
                                                             "CanToggleHidden",
-                                                            "FieldRef",
-                                                            "ResultType",
-                                                            "ShowInDisplayForm",
+                                                            //"FieldRef",
+                                                            //"ResultType",
+                                                            //"ShowInDisplayForm",
                                                             "Filterable",
                                                             "HeaderImage",
-                                                            "ShowInFileDlg",
-                                                            "ShowInVersionHistory",
+                                                            //"ShowInFileDlg",
+                                                            //"ShowInVersionHistory",
                                                             "JoinColName",
                                                             "JoinRowOrdinal",
                                                             "JoinType",
                                                             "ColName",
                                                             "RowOrdinal",
                                                             "StorageTZ",
-                                                            "ShowInListSettings",
-                                                            "FriendlyDisplayFormat",
-                                                            "Decimals",
-                                                            "Max",
+                                                            //"ShowInListSettings",
+                                                            //"FriendlyDisplayFormat",
+                                                            //"Decimals",
+                                                            //"Max",
                                                             "JSLink",
                                                             "DefaultListField",
                                                             "ForcePromoteDemote",
@@ -370,7 +411,7 @@ namespace CTHReader
                                                             "Height",
                                                             "ListItemMenuAllowed",
                                                             "LinkToItemAllowed",
-                                                            "Title"
+                                                            //"Title"
                                                         };
 
             #endregion
@@ -399,7 +440,7 @@ namespace CTHReader
                     XAttribute attrXmlDocuments = GenerateFlattenedAttribute(xe, "XmlDocuments");
                     XAttribute attrDefault = GenerateFlattenedAttribute(xe, "Default");
                     XAttribute attrMAPPINGS = GenerateFlattenedAttribute(xe, "MAPPINGS");
-
+                    
                     XAttribute attrCTID = new XAttribute("CTID", xe.Parent.Parent.Attribute("ID").Value);
                     XAttribute attrCTName = new XAttribute("CTName", ctName);
                     XAttribute attrCTGroup = new XAttribute("CTGroup", xe.Parent.Parent.Attribute("Group").Value);

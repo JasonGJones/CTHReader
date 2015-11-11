@@ -31,7 +31,14 @@ namespace CTHReader
             cth.OutputFilePrefix = ConfigurationManager.AppSettings["outputFilePrefix"];
             
             string outputLocation = ConfigurationManager.AppSettings["outputLocation"];
-            string siteUrl = ConfigurationManager.AppSettings["siteUrl"];
+            string siteUrl = new Uri(ConfigurationManager.AppSettings["siteUrl"]).ToString();
+
+            if (siteUrl.EndsWith("/"))
+            {
+                siteUrl = siteUrl.Substring(0, siteUrl.Length - 1);
+            }
+
+            
             Console.WriteLine(cth.ProcessCTH(siteUrl, outputLocation, CTHReader.CTHQueryMode.CTHAndSiteColumns));
             //doit();
             //tidyUpXMLDoc();
