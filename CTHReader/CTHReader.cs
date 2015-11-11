@@ -26,6 +26,7 @@ namespace CTHReader
         private string _outputFileCTHHierarchy;
         private string _outputFileCTHOrphanHierarchy;
 
+
         private ContentTypeHierarchy _ctHierarchy = new ContentTypeHierarchy();
 
         private const string comma = ",";
